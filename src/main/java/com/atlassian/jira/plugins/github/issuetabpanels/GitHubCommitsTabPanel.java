@@ -1,23 +1,5 @@
 package com.atlassian.jira.plugins.github.issuetabpanels;
 
-import com.atlassian.core.util.StringUtils;
-import com.atlassian.core.util.collection.EasyList;
-import com.atlassian.jira.config.properties.PropertiesManager;
-import com.atlassian.jira.issue.Issue;
-import com.atlassian.jira.issue.tabpanels.GenericMessageAction;
-import com.atlassian.jira.plugin.issuetabpanel.AbstractIssueTabPanel;
-import com.atlassian.jira.util.json.JSONArray;
-import com.atlassian.jira.util.json.JSONException;
-import com.atlassian.jira.util.json.JSONObject;
-import com.atlassian.sal.api.pluginsettings.PluginSettingsFactory;
-import com.opensymphony.user.User;
-import com.atlassian.jira.plugins.github.webwork.GitHubCommits;
-
-import com.atlassian.jira.web.action.JiraWebActionSupport;
-
-import com.atlassian.jira.security.PermissionManager;
-import com.atlassian.jira.security.Permissions;
-
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
@@ -25,17 +7,43 @@ import java.net.MalformedURLException;
 import java.net.URL;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Date;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Random;
+import java.util.TreeMap;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import com.atlassian.activeobjects.external.ActiveObjects;
+import com.atlassian.core.util.StringUtils;
+import com.atlassian.core.util.collection.EasyList;
+import com.atlassian.jira.config.properties.PropertiesManager;
+import com.atlassian.jira.issue.Issue;
+import com.atlassian.jira.issue.tabpanels.GenericMessageAction;
+import com.atlassian.jira.plugin.issuetabpanel.AbstractIssueTabPanel;
+import com.atlassian.jira.plugins.github.activeobjects.v1.DefaultGitHubMapper;
+import com.atlassian.jira.plugins.github.activeobjects.v1.IssueMapping;
+import com.atlassian.jira.plugins.github.webwork.GitHubCommits;
+import com.atlassian.jira.plugins.scm.SourceControlRepository;
+import com.atlassian.jira.security.PermissionManager;
+import com.atlassian.jira.security.Permissions;
+import com.atlassian.jira.util.json.JSONArray;
+import com.atlassian.jira.util.json.JSONException;
+import com.atlassian.jira.util.json.JSONObject;
+import com.atlassian.jira.web.action.JiraWebActionSupport;
+import com.atlassian.sal.api.pluginsettings.PluginSettingsFactory;
+import com.opensymphony.user.User;
 
 public class GitHubCommitsTabPanel extends AbstractIssueTabPanel {
 
     final PluginSettingsFactory pluginSettingsFactory;
     final Logger logger = LoggerFactory.getLogger(GitHubCommitsTabPanel.class);
 
-    public String repositoryURL;
     public String repoLogin;
     public String repoName;
     public String branch;
@@ -43,11 +51,15 @@ public class GitHubCommitsTabPanel extends AbstractIssueTabPanel {
     private final PermissionManager permissionManager;
 
     private String baseurl = PropertiesManager.getInstance().getPropertySet().getString("jira.baseurl");
+	private DefaultGitHubMapper gitHubMapper;
 
-    public GitHubCommitsTabPanel(PluginSettingsFactory pluginSettingsFactory, PermissionManager permissionManager){
-        this.pluginSettingsFactory = pluginSettingsFactory;
-        this.permissionManager = permissionManager;
-    }
+	public GitHubCommitsTabPanel(PluginSettingsFactory pluginSettingsFactory,
+			PermissionManager permissionManager, ActiveObjects activeObjects)
+	{
+		this.pluginSettingsFactory = pluginSettingsFactory;
+		this.permissionManager = permissionManager;		
+		this.gitHubMapper = new DefaultGitHubMapper(activeObjects);
+	}
 
     protected void populateVelocityParams(Map params)
     {
@@ -74,7 +86,6 @@ public class GitHubCommitsTabPanel extends AbstractIssueTabPanel {
         String repoBranchURL = "https://github.com/" + arrayCommitURL[8] + "/" + arrayCommitURL[9] + "/" + branch;
         logger.debug("RepoBranchURL: " + repoBranchURL);
 
-        this.repositoryURL = repoBranchURL;
         this.repoLogin = arrayCommitURL[8];
         this.repoName = arrayCommitURL[9];
         this.branch = branch;
@@ -84,36 +95,29 @@ public class GitHubCommitsTabPanel extends AbstractIssueTabPanel {
 
     public List getActions(Issue issue, User user) {
         String projectKey = issue.getProjectObject().getKey();
-        String issueId = (String)issue.getKey();
+        String issueKey = (String)issue.getKey();
 
-        GitHubCommits gitHubCommits = new GitHubCommits(pluginSettingsFactory);
-        gitHubCommits.projectKey = projectKey;
 
-        ArrayList<String> commitArray = new ArrayList<String>();
 
         String issueCommitActions = "No GitHub Commits Found";
 
         ArrayList<Object> githubActions = new ArrayList<Object>();
 
-        // First Time Repository URL is saved
-        if ((ArrayList<String>)pluginSettingsFactory.createSettingsForKey(projectKey).get("githubIssueCommitArray" + issueId) != null){
-            commitArray = (ArrayList<String>)pluginSettingsFactory.createSettingsForKey(projectKey).get("githubIssueCommitArray" + issueId);
 
-            for (int i=0; i < commitArray.size(); i++){
-                    logger.debug("Found commit id" + commitArray.get(i));
+        List<IssueMapping> issueMappings = gitHubMapper.getIssueMappings(issueKey);
+        for (IssueMapping issueMapping : issueMappings)
+		{
+            String repositoryURL = getRepositoryURLFromCommitURL(issueMapping.getCommitUrl());
+            SourceControlRepository scr = gitHubMapper.getSourceControlRepository(projectKey, repositoryURL);
+            GitHubCommits gitHubCommits = new GitHubCommits(gitHubMapper,scr);
+            
+            String commitDetails = gitHubCommits.getCommitDetails(issueMapping.getCommitUrl());
 
-                    gitHubCommits.repositoryURL = getRepositoryURLFromCommitURL(commitArray.get(i));
-                    String commitDetails = gitHubCommits.getCommitDetails(commitArray.get(i));
-
-                    issueCommitActions = this.formatCommitDetails(commitDetails);
-                    GenericMessageAction action = new GenericMessageAction(issueCommitActions);
-                    githubActions.add(action);
-
-                    logger.debug("Commit Entry: " + "githubIssueCommitArray" + i );
-
-            }
-
+            issueCommitActions = formatCommitDetails(commitDetails);
+            GenericMessageAction action = new GenericMessageAction(issueCommitActions);
+            githubActions.add(action);
         }
+
 
         if (githubActions.equals(null)){
             GenericMessageAction blankAction = new GenericMessageAction("");

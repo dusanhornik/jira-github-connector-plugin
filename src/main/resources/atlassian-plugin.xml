@@ -9,6 +9,10 @@
         <interface>com.atlassian.sal.api.pluginsettings.PluginSettingsFactory</interface>
     </component-import>
 
+    <component-import key="applicationProperties">
+		<interface>com.atlassian.sal.api.ApplicationProperties</interface>
+    </component-import>
+
     <issue-tabpanel key="github-commits-tabpanel" name="GitHub Commits Tab Panel"
         class="com.atlassian.jira.plugins.github.issuetabpanels.GitHubCommitsTabPanel">
 
@@ -16,6 +20,16 @@
         <label>GitHub</label>
         <resource type="velocity" name="view" location="templates/com/atlassian/jira/plugins/github/issuetabpanels/view.vm"/>
     </issue-tabpanel>
+
+    <component-import key="ao" name="Active Objects" interface="com.atlassian.activeobjects.external.ActiveObjects">
+        <description>Component to access Active Objects functionality from the plugin</description>
+    </component-import>
+
+    <ao key="ao-module" name="Active Objects Module">
+        <entity>com.atlassian.jira.plugins.github.activeobjects.v1.ProjectMapping</entity>
+        <entity>com.atlassian.jira.plugins.github.activeobjects.v1.IssueMapping</entity>
+        <upgradeTask>com.atlassian.jira.plugins.github.activeobjects.v1.PropertyMigrator</upgradeTask>
+    </ao>
 
 
     <!-- The webwork1 plugin element is how you add new actions to JIRA -->

@@ -1,15 +1,13 @@
 package com.atlassian.jira.plugins.github.webwork;
 
-import com.atlassian.jira.util.json.JSONObject;
-import com.atlassian.jira.web.action.JiraWebActionSupport;
-import com.atlassian.sal.api.pluginsettings.PluginSettingsFactory;
-
-import java.util.Enumeration;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import com.atlassian.activeobjects.external.ActiveObjects;
+import com.atlassian.jira.plugins.github.activeobjects.v1.DefaultGitHubMapper;
+import com.atlassian.jira.plugins.scm.SourceControlRepository;
+import com.atlassian.jira.util.json.JSONObject;
+import com.atlassian.jira.web.action.JiraWebActionSupport;
 
 /**
  * Created by IntelliJ IDEA.
@@ -20,22 +18,14 @@ import org.slf4j.LoggerFactory;
  */
 public class GitHubPostCommit extends JiraWebActionSupport {
 
-    final PluginSettingsFactory pluginSettingsFactory;
     final Logger logger = LoggerFactory.getLogger(GitHubPostCommit.class);
+	private final DefaultGitHubMapper gitHubMapper;
 
-    public GitHubPostCommit(PluginSettingsFactory pluginSettingsFactory){
-        this.pluginSettingsFactory = pluginSettingsFactory;
+    public GitHubPostCommit(ActiveObjects activeObjects){
+		this.gitHubMapper = new DefaultGitHubMapper(activeObjects);
     }
 
     protected void doValidation() {
-
-        if (branch.equals("")){
-            validations += "Missing Required GitHub 'branch' parameter. <br/>";
-        }
-
-        if (projectKey.equals("")){
-            validations += "Missing Required 'projectKey' parameter. <br/>";
-        }
 
         if (payload.equals("")){
             validations += "Missing Required GitHub 'payload' parameter. <br/>";
@@ -52,11 +42,9 @@ public class GitHubPostCommit extends JiraWebActionSupport {
             JSONObject jsonRepository = jsonPayload.getJSONObject("repository");
 
             String baseRepositoryURL = jsonRepository.getString("url");
-            String url = baseRepositoryURL + "/" + branch;
 
-            GitHubCommits repositoryCommits = new GitHubCommits(pluginSettingsFactory);
-            repositoryCommits.repositoryURL = url;
-            repositoryCommits.projectKey = projectKey;
+            SourceControlRepository repository = gitHubMapper.getRepository(Integer.valueOf(repositoryId));
+			GitHubCommits repositoryCommits = new GitHubCommits(gitHubMapper, repository);
 
             // Starts actual search of commits via GitAPI, "1" is the first
             // page of commits to be returned via the API
@@ -76,14 +64,9 @@ public class GitHubPostCommit extends JiraWebActionSupport {
     public void setPayload(String value){this.payload = value;}
     public String getPayload(){return payload;}
 
-    // Project Key
-    private String projectKey = "";
-    public void setProjectKey(String value){this.projectKey = value;}
-    public String getProjectKey(){return projectKey;}
-
-    // GitHub Repository URL
-    private String branch = "";
-    public void setBranch(String value){this.branch = value;}
-    public String getBranch(){return branch;}
+    // GitHub Repository ID
+    private String repositoryId = "";
+    public void setRepositoryId(String repositoryId){this.repositoryId = repositoryId;}
+    public String getRepositoryId(){return repositoryId;}
 
 }

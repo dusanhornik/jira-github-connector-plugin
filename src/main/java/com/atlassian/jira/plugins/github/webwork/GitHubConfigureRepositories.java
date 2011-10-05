@@ -1,24 +1,26 @@
 package com.atlassian.jira.plugins.github.webwork;
 
 
-import com.atlassian.jira.security.xsrf.RequiresXsrfCheck;
-import com.atlassian.jira.ComponentManager;
-import com.atlassian.jira.config.properties.PropertiesManager;
-import com.atlassian.jira.issue.IssueManager;
-import com.atlassian.jira.issue.MutableIssue;
-import com.atlassian.jira.issue.comments.Comment;
-import com.atlassian.jira.issue.comments.CommentManager;
-import com.atlassian.jira.project.Project;
-import com.atlassian.jira.web.action.JiraWebActionSupport;
-import com.atlassian.sal.api.pluginsettings.PluginSettingsFactory;
-
-import java.util.*;
+import java.net.URLEncoder;
+import java.util.Enumeration;
+import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import org.radeox.util.logging.SystemOutLogger;
+import org.apache.commons.lang.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import com.atlassian.activeobjects.external.ActiveObjects;
+import com.atlassian.jira.ComponentManager;
+import com.atlassian.jira.plugins.github.activeobjects.v1.DefaultGitHubMapper;
+import com.atlassian.jira.plugins.github.activeobjects.v1.ProjectMapping;
+import com.atlassian.jira.plugins.scm.SourceControlRepository;
+import com.atlassian.jira.project.Project;
+import com.atlassian.jira.security.xsrf.RequiresXsrfCheck;
+import com.atlassian.jira.web.action.JiraWebActionSupport;
+import com.atlassian.sal.api.ApplicationProperties;
+import com.atlassian.sal.api.pluginsettings.PluginSettingsFactory;
 
 
 public class GitHubConfigureRepositories extends JiraWebActionSupport {
@@ -27,9 +29,13 @@ public class GitHubConfigureRepositories extends JiraWebActionSupport {
     final Logger logger = LoggerFactory.getLogger(GitHubConfigureRepositories.class);
 
     JiraWebActionSupport jwas = new JiraWebActionSupport();
+	private final DefaultGitHubMapper gitHubMapper;
+	private final ApplicationProperties ap;
 
-    public GitHubConfigureRepositories(PluginSettingsFactory pluginSettingsFactory){
+    public GitHubConfigureRepositories(PluginSettingsFactory pluginSettingsFactory, ActiveObjects activeObjects, ApplicationProperties applicationProperties){
         this.pluginSettingsFactory = pluginSettingsFactory;
+		ap = applicationProperties;
+		this.gitHubMapper = new DefaultGitHubMapper(activeObjects);
     }
 
     protected void doValidation() {
@@ -96,26 +102,22 @@ public class GitHubConfigureRepositories extends JiraWebActionSupport {
                     clientID = (String)pluginSettingsFactory.createGlobalSettings().get("githubRepositoryClientID");
 
                     String contextPath = request.getContextPath();
-                    if(clientID == null){
-                        //logger.debug("No Client ID");
-                        validations = "You will need to setup a <a href='" + contextPath + "/secure/admin/ConfigureGlobalSettings!default.jspa'>GitHub OAuth Application</a> before you can add private repositories";
-                    }else{
-                        if(clientID.equals("")){
-                            validations = "You will need to setup a <a href='" + contextPath + "/secure/admin/ConfigureGlobalSettings!default.jspa'>GitHub OAuth Application</a> before you can add private repositories";
-                        }else{
-                            addRepositoryURL();
-                            pluginSettingsFactory.createGlobalSettings().put("githubPendingProjectKey", projectKey);
-                            pluginSettingsFactory.createGlobalSettings().put("githubPendingRepositoryURL", url);
+					if (StringUtils.isBlank(clientID))
+					{
+						// logger.debug("No Client ID");
+						validations = "You will need to setup a <a href='" + contextPath + "/secure/admin/ConfigureGlobalSettings!default.jspa'>GitHub OAuth Application</a> before you can add private repositories";
+					} else
+					{
+						int repoId = gitHubMapper.addRepository1(new SourceControlRepository(projectKey, url));
+						String encodedUrl = URLEncoder.encode(ap.getBaseUrl() + "/secure/admin/GitHubOAuth2.jspa?&repositoryId="+repoId, "UTF-8"); 
+						String redirectURI = "https://github.com/login/oauth/authorize?scope=repo&client_id=" + clientID + "&redirect_uri="+encodedUrl;
+						redirectURL = redirectURI;
 
-                            String redirectURI = "https://github.com/login/oauth/authorize?scope=repo&client_id=" + clientID;
-                            redirectURL = redirectURI;
-
-                            return "redirect";
-                        }
-                    }
+						return "redirect";
+					}
                 }else{
                     logger.debug("PUBLIC Add Repository");
-                    addRepositoryURL();
+                    gitHubMapper.addRepository(new SourceControlRepository(projectKey, url));
                     nextAction = "ForceSync";
 
                 }
@@ -131,15 +133,22 @@ public class GitHubConfigureRepositories extends JiraWebActionSupport {
             }
 
             if (nextAction.equals("DeleteRepository")){
-                deleteRepositoryURL();
+                gitHubMapper.removeRepository(repositoryId);
             }
 
             if (nextAction.equals("CurrentSyncStatus")){
 
                 try{
-                    currentSyncPage = (String)pluginSettingsFactory.createSettingsForKey(projectKey).get("currentsync" + url + projectKey);
-                    nonJIRACommitTotal = (String)pluginSettingsFactory.createSettingsForKey(projectKey).get("NonJIRACommitTotal" + url);
-                    JIRACommitTotal = (String)pluginSettingsFactory.createSettingsForKey(projectKey).get("JIRACommitTotal" + url);
+                	ProjectMapping projectMapping = gitHubMapper.getProjectMapping(projectKey, url);
+                	if (projectMapping!=null)
+                	{
+                		currentSyncPage = projectMapping.getCurrentSync(); 
+                		nonJIRACommitTotal = projectMapping.getNonJiraCommitTotal();
+                		JIRACommitTotal = projectMapping.getJiraCommitTotal();
+                	} else
+                	{
+                		logger.debug("GitHubConfigureRepositories.doExecute().CurrentSyncStatus - ProjectMapping for project [] and repo [] not found",projectKey, url);
+                	}
 
                 }catch (Exception e){
                     logger.debug("GitHubConfigureRepositories.doExecute().CurrentSyncStatus - Exception reading plugin values.");
@@ -161,82 +170,19 @@ public class GitHubConfigureRepositories extends JiraWebActionSupport {
         return INPUT;
     }
 
-    private void resetCommitTotals(){
-        logger.debug("GitHubConfigureRepositories.resetCommitTotals()");
-        try{
-            pluginSettingsFactory.createSettingsForKey(projectKey).put("currentsync" + url + projectKey, "0");
-            pluginSettingsFactory.createSettingsForKey(projectKey).put("NonJIRACommitTotal" + url, "0");
-            pluginSettingsFactory.createSettingsForKey(projectKey).put("JIRACommitTotal" + url, "0");
-        }catch (Exception e){
-            logger.debug("GitHubConfigureRepositories.resetCommitTotals() - exception caught");
-        }
-    }
-
     private void syncRepository(){
 
         logger.debug("GitHubConfigureRepositories.syncRepository() - Starting Repository Sync");
 
-        GitHubCommits repositoryCommits = new GitHubCommits(pluginSettingsFactory);
-        repositoryCommits.repositoryURL = url;
-        repositoryCommits.projectKey = projectKey;
+        SourceControlRepository scr = gitHubMapper.getSourceControlRepository(projectKey, url);
+        GitHubCommits repositoryCommits = new GitHubCommits(gitHubMapper, scr);
 
         // Reset Commit count
-        resetCommitTotals();
+        gitHubMapper.resetCommitTotals(projectKey, url);
 
         // Starts actual search of commits via GitAPI, "1" is the first
         // page of commits to be returned via the API
         messages = repositoryCommits.syncCommits(1);
-
-    }
-
-    // Manages the entry of multiple repository URLs in a single pluginSetting Key
-    private void addRepositoryURL(){
-        ArrayList<String> urlArray = new ArrayList<String>();
-
-        // First Time Repository URL is saved
-        if ((ArrayList<String>)pluginSettingsFactory.createSettingsForKey(projectKey).get("githubRepositoryURLArray") != null){
-            urlArray = (ArrayList<String>)pluginSettingsFactory.createSettingsForKey(projectKey).get("githubRepositoryURLArray");
-        }
-
-        Boolean boolExists = false;
-
-        for (int i=0; i < urlArray.size(); i++){
-            if (url.toLowerCase().equals(urlArray.get(i).toLowerCase())){
-                boolExists = true;
-            }
-        }
-
-        if (!boolExists){
-            urlArray.add(url);
-            pluginSettingsFactory.createSettingsForKey(projectKey).put("githubRepositoryURLArray", urlArray);
-            resetCommitTotals();
-        }
-
-    }
-
-    // Removes a single Repository URL from a given Project
-    private void deleteRepositoryURL(){
-        ArrayList<String> urlArray = new ArrayList<String>();
-
-        // Remove associated access key (if any) for private repos
-        pluginSettingsFactory.createSettingsForKey(projectKey).remove("githubRepositoryAccessToken" + url);
-
-        urlArray = (ArrayList<String>)pluginSettingsFactory.createSettingsForKey(projectKey).get("githubRepositoryURLArray");
-
-        for (int i=0; i < urlArray.size(); i++){
-            if (url.equals(urlArray.get(i))){
-                urlArray.remove(i);
-
-                GitHubCommits repositoryCommits = new GitHubCommits(pluginSettingsFactory);
-                repositoryCommits.repositoryURL = url;
-                repositoryCommits.projectKey = projectKey;
-
-                repositoryCommits.removeRepositoryIssueIDs();
-
-            }
-        }
-
-        pluginSettingsFactory.createSettingsForKey(projectKey).put("githubRepositoryURLArray", urlArray);
 
     }
 
@@ -263,10 +209,10 @@ public class GitHubConfigureRepositories extends JiraWebActionSupport {
     public String escape(String unescapedHTML){
         return jwas.htmlEncode(unescapedHTML);
     }
-
-    // Stored Repository + JIRA Projects
-    public ArrayList<String> getProjectRepositories(String pKey){
-        return (ArrayList<String>)pluginSettingsFactory.createSettingsForKey(pKey).get("githubRepositoryURLArray");
+    
+    public List<ProjectMapping> getProjectRepositories(String projectKey)
+    {
+    	return gitHubMapper.getProjectRepositories(projectKey);
     }
 
     // Mode setting to 'single' indicates that this is administration of a single JIRA project
@@ -275,6 +221,11 @@ public class GitHubConfigureRepositories extends JiraWebActionSupport {
     public void setMode(String value){this.mode = value;}
     public String getMode(){return mode;}
 
+    private String repositoryId = "";
+    public void setRepositoryId(String value){this.repositoryId = value;}
+    public String getRepositoryId(){return repositoryId;}
+
+    
     // GitHub Repository URL
     private String url = "";
     public void setUrl(String value){this.url = value;}

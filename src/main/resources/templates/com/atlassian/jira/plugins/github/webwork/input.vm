@@ -166,12 +166,12 @@
 
                     #foreach ($repository in $action.getProjectRepositories($action.escape($action.getProjectKey())))
                         <tr>
-                            <td><a href="$action.getRepositoryURLWithoutBranch($repository)" target="_new">$action.escape($repository)</a></td>
+                            <td><a href="$action.getRepositoryURLWithoutBranch($repository.repositoryId)" target="_new">$action.escape($repository.repositoryId)</a></td>
                             <td>$action.escape($action.getProjectKey())</td>
                             <td width="260px">
-                                <a href="${baseurl}/secure/admin/GitHubConfigureRepositories.jspa?url=$repository&projectKey=$action.escape($action.getProjectKey())&nextAction=ForceSync&mode=$action.escape($action.getMode())&atl_token=$atl_token">Force Sync</a> |
-                                <a href="${baseurl}/secure/admin/GitHubConfigureRepositories.jspa?url=$repository&projectKey=$action.escape($action.getProjectKey())&nextAction=ShowPostCommitURL&mode=$action.escape($action.getMode())&atl_token=$atl_token">Post Commit</a> |
-                                <a href="#" onclick="confirmation('${baseurl}/secure/admin/GitHubConfigureRepositories.jspa?nextAction=DeleteRepository&url=$action.escape($repository)&projectKey=$action.getProjectKey()&mode=$action.escape($action.getMode())&atl_token=$atl_token')">Delete</a>
+                                <a href="${baseurl}/secure/admin/GitHubConfigureRepositories.jspa?url=$repository.repositoryId&projectKey=$action.escape($action.getProjectKey())&nextAction=ForceSync&mode=$action.escape($action.getMode())&atl_token=$atl_token">Force Sync</a> |
+                                <a href="${baseurl}/secure/admin/GitHubConfigureRepositories.jspa?url=$repository.repositoryId&projectKey=$action.escape($action.getProjectKey())&nextAction=ShowPostCommitURL&mode=$action.escape($action.getMode())&atl_token=$atl_token">Post Commit</a> |
+                                <a href="#" onclick="confirmation('${baseurl}/secure/admin/GitHubConfigureRepositories.jspa?repositoryId=$repository.id&nextAction=DeleteRepository&url=$action.escape($repository.repositoryId)&projectKey=$action.getProjectKey()&mode=$action.escape($action.getMode())&atl_token=$atl_token')">Delete</a>
                             </td>
                         </tr>
                     #end
@@ -194,12 +194,12 @@
 
                     #foreach ($repository in $action.getProjectRepositories($project.key))
                         <tr>
-                            <td><a href="$action.getRepositoryURLWithoutBranch($repository)" target="_new">$action.escape($repository)</a></td>
+                            <td><a href="$action.getRepositoryURLWithoutBranch($repository)" target="_new">$action.escape($repository.repositoryUri), $repository.ID</a></td>
                             <td>$action.escape($project.key)</td>
                             <td width="260px">
-                                <a href="${baseurl}/secure/admin/GitHubConfigureRepositories.jspa?url=$action.escape($repository)&projectKey=$action.escape($project.key)&nextAction=ForceSync&mode=$action.escape($action.getMode())&atl_token=$atl_token">Force Sync</a> |
-                                <a href="${baseurl}/secure/admin/GitHubConfigureRepositories.jspa?url=$action.escape($repository)&projectKey=$action.escape($project.key)&nextAction=ShowPostCommitURL&mode=$action.escape($action.getMode())&atl_token=$atl_token">Post Commit</a> |
-                                <a href="#" onclick="confirmation('${baseurl}/secure/admin/GitHubConfigureRepositories.jspa?nextAction=DeleteRepository&url=$repository&projectKey=$project.key&mode=$action.escape($action.getMode())&atl_token=$atl_token')">Delete</a>
+                                <a href="${baseurl}/secure/admin/GitHubConfigureRepositories.jspa?url=$action.escape($repository.repositoryUri)&projectKey=$action.escape($project.key)&nextAction=ForceSync&mode=$action.escape($action.getMode())&atl_token=$atl_token">Force Sync</a> |
+                                <a href="${baseurl}/secure/admin/GitHubConfigureRepositories.jspa?url=$action.escape($repository.repositoryUri)&projectKey=$action.escape($project.key)&nextAction=ShowPostCommitURL&mode=$action.escape($action.getMode())&atl_token=$atl_token">Post Commit</a> |
+                                <a href="#" onclick="confirmation('${baseurl}/secure/admin/GitHubConfigureRepositories.jspa?repositoryId=$repository.getID()&nextAction=DeleteRepository&url=$repository.repositoryUri&projectKey=$project.key&mode=$action.escape($action.getMode())&atl_token=$atl_token')">Delete</a>
                             </td>
                         </tr>
                     #end

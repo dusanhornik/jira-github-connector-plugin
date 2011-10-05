@@ -1,30 +1,29 @@
 package com.atlassian.jira.plugins.github.webwork;
 
-import com.atlassian.jira.config.properties.PropertiesManager;
-import com.atlassian.jira.project.Project;
-
-import com.atlassian.jira.security.xsrf.RequiresXsrfCheck;
-import com.atlassian.jira.web.action.JiraWebActionSupport;
-import com.atlassian.sal.api.pluginsettings.PluginSettingsFactory;
-
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.MalformedURLException;
 import java.net.URL;
 
-import com.atlassian.sal.api.pluginsettings.PluginSettingsFactory;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import com.atlassian.activeobjects.external.ActiveObjects;
+import com.atlassian.jira.plugins.github.activeobjects.v1.DefaultGitHubMapper;
+import com.atlassian.jira.plugins.scm.SourceControlRepository;
+import com.atlassian.jira.web.action.JiraWebActionSupport;
+import com.atlassian.sal.api.pluginsettings.PluginSettingsFactory;
 
 public class GitHubOAuth2 extends JiraWebActionSupport {
 
     final PluginSettingsFactory pluginSettingsFactory;
     final Logger logger = LoggerFactory.getLogger(GitHubOAuth2.class);
+	private DefaultGitHubMapper gitHubMapper;
 
-    public GitHubOAuth2(PluginSettingsFactory pluginSettingsFactory){
+    public GitHubOAuth2(PluginSettingsFactory pluginSettingsFactory, ActiveObjects activeObjects){
         this.pluginSettingsFactory = pluginSettingsFactory;
+        this.gitHubMapper = new DefaultGitHubMapper(activeObjects);
     }
 
     protected void doValidation() {
@@ -45,8 +44,6 @@ public class GitHubOAuth2 extends JiraWebActionSupport {
         }else{
 
             if(code.length() > 0){
-                    projectKey = (String)pluginSettingsFactory.createGlobalSettings().get("githubPendingProjectKey");
-                    privateRepositoryURL = (String)pluginSettingsFactory.createGlobalSettings().get("githubPendingRepositoryURL");
 
                     // strips "access_token=" from result returned from GitHub
                     access_token = requestAccessToken().split("=")[1];
@@ -58,10 +55,9 @@ public class GitHubOAuth2 extends JiraWebActionSupport {
                     }else{
 
                     // Verification Success
-                        pluginSettingsFactory.createSettingsForKey(projectKey).put("githubRepositoryAccessToken" + privateRepositoryURL, access_token);
-
-                        String[] urlArray = privateRepositoryURL.split("/");
-                        postCommitURL = "GitHubPostCommit.jspa?projectKey=" + projectKey + "&branch=" + urlArray[urlArray.length-1];
+                    	SourceControlRepository repository = gitHubMapper.getRepository(Integer.valueOf(repositoryId));
+                    	gitHubMapper.setAccessToken(repository, access_token); 
+                        postCommitURL = "GitHubPostCommit.jspa?repositoryId=" + repositoryId;
                     }
             }
 
@@ -123,13 +119,10 @@ public class GitHubOAuth2 extends JiraWebActionSupport {
     public void setError(String value){this.error = value;}
     public String getError(){return error;}
 
-    // Project Key
-    private String projectKey = "";
-    public String getProjectKey(){return projectKey;}
-
-    // Private Repository URL
-    private String privateRepositoryURL = "";
-    public String getPrivateRepositoryURL(){return privateRepositoryURL;}
+    // RepositoryId
+    private String repositoryId = "";
+    public String getRepositoryId() { return repositoryId; }
+	public void setRepositoryId(String repositoryId) { this.repositoryId = repositoryId; }
 
     // Form Directive
     private String nextAction = "";

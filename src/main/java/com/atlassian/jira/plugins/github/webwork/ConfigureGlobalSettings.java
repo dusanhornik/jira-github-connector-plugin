@@ -1,17 +1,11 @@
 package com.atlassian.jira.plugins.github.webwork;
 
-import com.atlassian.jira.ComponentManager;
-import com.atlassian.jira.config.properties.PropertiesManager;
-import com.atlassian.jira.issue.comments.CommentManager;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import com.atlassian.jira.security.xsrf.RequiresXsrfCheck;
 import com.atlassian.jira.web.action.JiraWebActionSupport;
 import com.atlassian.sal.api.pluginsettings.PluginSettingsFactory;
-
-import com.atlassian.jira.user.util.UserManager;
-import com.atlassian.crowd.embedded.api.User;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 
 
